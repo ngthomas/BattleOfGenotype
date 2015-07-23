@@ -325,8 +325,8 @@ if __name__ == '__main__':
             os.makedirs(i)
     
     FastaFile = open(opts.input,'r')
-    HeaderOut = open("fasta_header.csv", 'w')
-    VcfFile = open("Veritas.vcf", 'w')
+    HeaderOut = open("data/fasta_header.csv", 'w')
+    VcfFile = open("data/veritas.vcf", 'w')
     
     
     WriteVcfHeader(VcfFile, opts)
