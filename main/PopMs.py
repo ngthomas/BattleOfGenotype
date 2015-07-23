@@ -160,7 +160,7 @@ def PrintRefFasta(modelSeq, SNPsFile, id):
     context2 = {"seq": "".join(modelSeq[1]), "hap": "minor", "id": id}
     
     SNPsFile.write(template.format(**context1))
-    SNPsFile.write(template.format(**context2))
+    #SNPsFile.write(template.format(**context2))
 
 def PrintVcf(VcfFile, haplMatrix, snpPos, modelSeq, id):
 
@@ -240,7 +240,7 @@ def DivideRef(seq, tstvRate):
 
 def makeRNFfiles(opts, id):
 
-    path = "".join(["sim/indiv_",str(id)])
+    path = "".join(["snake/indiv_",str(id)])
     if not os.path.exists(path):
         os.makedirs(path)
     
@@ -249,9 +249,9 @@ def makeRNFfiles(opts, id):
     template="""
 import rnftools, smbl
 
-consen_ref = "{basePath}/{input}"
+consen_ref = "{basePath}/data/ref/ref.fasta"
 indiv_ref =  "{basePath}/data/indiv_{id}.fasta"
-reads = "{basePath}/data/simu_{id}.fq"
+reads = "{basePath}/sim/simu_{id}.fq"
 bwa = "{basePath}/align/BWA-MEM_{id}.bam"
 yara = "{basePath}/align/YARA_{id}.bam"
 
@@ -265,11 +265,12 @@ rnftools.mishmash.DwgSim(fasta=indiv_ref,
                          read_length_1=100,
                          read_length_2=0,
                          number_of_read_tuples=10000, # might not be fixed
-                         haploid_mode = True,
+                         #haploid_mode = True, # currently the latest version contains bugs 
                          error_rate_1=0.001, #0.001-0.05; default : 0.02
                          mutation_rate =0.0001, # default : 0.001
                          indels =0.1, # default: 0.1
-                         prob_indel_ext=0.1 # default: 0.3
+                         prob_indel_ext=0.1 # default: 0.3,
+                         other_params="-H",
                          )
                          
 # -y FLOAT      probability of a random DNA read [0.05]
@@ -320,7 +321,7 @@ if __name__ == '__main__':
     opts = parser.parse_args()
     #/Users/work/academic/anderson/BattleOfGenotype/src/ms.folder/msdir/ms
     
-    for i in ["data", "sim", "align"]:
+    for i in ["data", "snake", "align", "data/ref", "sim"]:
         if not os.path.exists(i):
             os.makedirs(i)
     
@@ -334,7 +335,7 @@ if __name__ == '__main__':
     AllFasta = []
     for i in range(0,opts.nindiv):
         AllFasta.append(open("".join(["data/indiv_",str(i),".fasta"]), 'w'))
-    AllFasta.append(open("data/ref.fasta", 'w'))
+    AllFasta.append(open("data/ref/ref.fasta", 'w'))
     
     dnaSeqs = readFasta(FastaFile, HeaderOut)
 
