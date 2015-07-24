@@ -156,11 +156,14 @@ def PrintRefFasta(modelSeq, SNPsFile, id):
     template=""">contig_{id}_{hap}
 {seq}\n"""
     
-    context1 = {"seq": "".join(modelSeq[0]), "hap": "major", "id": id}
-    context2 = {"seq": "".join(modelSeq[1]), "hap": "minor", "id": id}
+    #context1 = {"seq": "".join(modelSeq[0]), "hap": "major", "id": id}
+    #context2 = {"seq": "".join(modelSeq[1]), "hap": "minor", "id": id}
+
+    context1 = {"seq": "".join(modelSeq[0]), "hap": 0, "id": id}
+    context2 = {"seq": "".join(modelSeq[0]), "hap": 1, "id": id}
     
     SNPsFile.write(template.format(**context1))
-    #SNPsFile.write(template.format(**context2))
+    SNPsFile.write(template.format(**context2))
 
 def PrintVcf(VcfFile, haplMatrix, snpPos, modelSeq, id):
 
@@ -269,7 +272,7 @@ rnftools.mishmash.DwgSim(fasta=indiv_ref,
                          error_rate_1=0.001, #0.001-0.05; default : 0.02
                          mutation_rate =0.0001, # default : 0.001
                          indels =0.1, # default: 0.1
-                         prob_indel_ext=0.1 # default: 0.3,
+                         prob_indel_ext=0.1, # default: 0.3,
                          other_params="-H",
                          )
                          
