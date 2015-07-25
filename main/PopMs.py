@@ -55,7 +55,9 @@ def readFasta(FastaFile, HeaderOut):
                 dnaSeq = ""
         else:
             dnaSeq = dnaSeq + line.strip()
-    yield i, dnaSeq
+    if dnaSeq != "":
+        i = i + 1
+        yield i, dnaSeq
 
 
 def SNPit(id, seq, SNPsFile, VcfFile, opts):
@@ -146,6 +148,7 @@ def PrintIndivFasta(seq, SNPsFile, indx, id):
     context = {
     "seq": seq,
     "hap": indx%2,
+    #"hap": 0,
     "id": id
     }
 
@@ -160,10 +163,10 @@ def PrintRefFasta(modelSeq, SNPsFile, id):
     #context2 = {"seq": "".join(modelSeq[1]), "hap": "minor", "id": id}
 
     context1 = {"seq": "".join(modelSeq[0]), "hap": 0, "id": id}
-    context2 = {"seq": "".join(modelSeq[0]), "hap": 1, "id": id}
+    #context2 = {"seq": "".join(modelSeq[0]), "hap": 1, "id": id}
     
     SNPsFile.write(template.format(**context1))
-    SNPsFile.write(template.format(**context2))
+    #SNPsFile.write(template.format(**context2))
 
 def PrintVcf(VcfFile, haplMatrix, snpPos, modelSeq, id):
 
@@ -249,6 +252,9 @@ def makeRNFfiles(opts, id):
     
     SnakeFile = open(path+"/Snakefile",'w')
 
+    =opts.mean-read
+    =opts.var-read
+
     template="""
 import rnftools, smbl
 
@@ -265,7 +271,7 @@ rnftools.mishmash.sample(reads[:-3],
                          reads_in_tuple=1)
 
 rnftools.mishmash.DwgSim(fasta=indiv_ref,
-                         read_length_1=100,
+                         read_length_1=400,
                          read_length_2=0,
                          number_of_read_tuples=10000, # might not be fixed
                          #haploid_mode = True, # currently the latest version contains bugs 
@@ -315,12 +321,24 @@ include: rnftools.include()
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='simulate SNPs on ')
     parser.add_argument('-i','--input',required=True, default=None,type=str,help='relative input FASTA file path')
+    parser.add_argument('-ms','--ms',required=True, default=None, type=str, help='local ms path')
     parser.add_argument('-n','--nindiv',required=False, default=4,type=int,help='number of individuals')
     parser.add_argument('-s','--snprate',required=False, default=0.01,type=float,help='expected number of SNPs per bp')
     #parser.add_argument('-r','--recomb',required=False, default=0.5,type=double,help='recombination rate (0 to 0.5) ')
     parser.add_argument('-r','--rho',required=False, default=0,type=float,help='recombination param - 4Nr')
     parser.add_argument('-t','--tstv',required=False, default=3,type=float,help='transition to transversion ratio (>0)')
-    parser.add_argument('-ms','--ms',required=True, default=None, type=str, help='local ms path')
+
+    parser.add_argument('-l','--len',required=False, default=300, type=int, help='simulated read length')
+    parser.add_argument('-mR','--mean-read',required=False, default=10000, type=int, help='expected number of total reads per individual')
+    parser.add_argument('-vR','--var-read',required=False, default=1000, type=int, help='variance of number of total reads per individual')
+
+    parser.add_argument('-ha','--ha',required=False, default=2, type=float, help='alpha parameter of the binomial-beta that instantiates haplotype bias')
+    parser.add_argument('-hb','--hb',required=False, default=2, type=float, help='beta parameter of the binomial-beta that instantiates haplotype bias')
+
+    parser.add_argument('-ga','--ga',required=False, default=620, type=float, help='alpha parameter for gamma distrib that supports each locus-based dirichlet weight')
+    parser.add_argument('-gb','--gb',required=False, default=1/700, type=float, help='beta parameter for gamma distrib that supports each locu-based dirichlet weight ')
+
+
     opts = parser.parse_args()
     #/Users/work/academic/anderson/BattleOfGenotype/src/ms.folder/msdir/ms
     
