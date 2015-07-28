@@ -17,6 +17,16 @@ import numpy as np
 from scipy.stats import nbinom, beta
 import random
 
+def getNumEntries(inFASTA):
+
+    cmd = " ".join(["grep '>' ",
+                    os.path.abspath("")+"/"+inFASTA,
+                    "| wc -l"])
+    return subprocess.check_output(cmd,shell=True)
+
+
+
+
 def WriteVcfHeader(VcfFile, opts):
 
     template="""##fileformat=VCFv4.1
@@ -252,8 +262,11 @@ def makeRNFfiles(opts, id):
     
     SnakeFile = open(path+"/Snakefile",'w')
 
-    =opts.mean-read
-    =opts.var-read
+    mean =opts.meanRead
+    variance =opts.varRead
+    shape = mean*mean /variance
+    scale = variance /mean
+    nReads= np.random.gamma(shape, scale, 1)
 
     template="""
 import rnftools, smbl
@@ -271,9 +284,9 @@ rnftools.mishmash.sample(reads[:-3],
                          reads_in_tuple=1)
 
 rnftools.mishmash.DwgSim(fasta=indiv_ref,
-                         read_length_1=400,
+                         read_length_1={lenR},
                          read_length_2=0,
-                         number_of_read_tuples=10000, # might not be fixed
+                         number_of_read_tuples={numReads}, # might not be fixed
                          #haploid_mode = True, # currently the latest version contains bugs 
                          error_rate_1=0.001, #0.001-0.05; default : 0.02
                          mutation_rate =0.0001, # default : 0.001
@@ -312,7 +325,9 @@ include: rnftools.include()
     context = {
     "basePath": os.path.abspath(""),
     "input": opts.input,
-    "id": id
+    "id": id,
+    "lenR": opts.len,
+    "numReads":nReads
     }
     
     SnakeFile.write(template.format(**context))
@@ -329,8 +344,8 @@ if __name__ == '__main__':
     parser.add_argument('-t','--tstv',required=False, default=3,type=float,help='transition to transversion ratio (>0)')
 
     parser.add_argument('-l','--len',required=False, default=300, type=int, help='simulated read length')
-    parser.add_argument('-mR','--mean-read',required=False, default=10000, type=int, help='expected number of total reads per individual')
-    parser.add_argument('-vR','--var-read',required=False, default=1000, type=int, help='variance of number of total reads per individual')
+    parser.add_argument('-mR','--meanRead',required=False, default=10000, type=int, help='expected number of total reads per individual')
+    parser.add_argument('-vR','--varRead',required=False, default=1000, type=int, help='variance of number of total reads per individual')
 
     parser.add_argument('-ha','--ha',required=False, default=2, type=float, help='alpha parameter of the binomial-beta that instantiates haplotype bias')
     parser.add_argument('-hb','--hb',required=False, default=2, type=float, help='beta parameter of the binomial-beta that instantiates haplotype bias')
@@ -350,7 +365,8 @@ if __name__ == '__main__':
     HeaderOut = open("data/fasta_header.csv", 'w')
     VcfFile = open("data/veritas.vcf", 'w')
     
-    
+
+    getNumEntries(opts.input)
     WriteVcfHeader(VcfFile, opts)
     
     AllFasta = []
