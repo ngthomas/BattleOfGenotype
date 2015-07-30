@@ -17,16 +17,20 @@ import numpy as np
 from scipy.stats import nbinom, beta
 import random
 
+''' 
+    This function counts the number of fasta entries given the Fasta file path
+'''
+
 def getNumEntries(inFASTA):
 
     cmd = " ".join(["grep '>' ",
-                    os.path.abspath("")+"/"+inFASTA,
+                    inFASTA,
                     "| wc -l"])
-    return subprocess.check_output(cmd,shell=True)
+    numLine = subprocess.check_output(cmd,shell=True)
+    return int(numLine)
 
 
-
-
+# This function writes the beginning header for the VCF file
 def WriteVcfHeader(VcfFile, opts):
 
     template="""##fileformat=VCFv4.1
@@ -69,8 +73,17 @@ def readFasta(FastaFile, HeaderOut):
         i = i + 1
         yield i, dnaSeq
 
+'''
+     Given a single fasta entry as a template, this module generates a fixed number of 
+     haplotype sequences with derived alleles based on Coalescent Model (MS). 
+     This module depends on three output functions:       
+     1) PrintIndivFasta - printing individual Fasta sequence
+     2) PrintRefFasta
+     3) PrintVcf
+'''
 
-def SNPit(id, seq, SNPsFile, VcfFile, opts):
+
+def SNPit(id, numEntries, seq, SNPsFile, VcfFile, opts):
     
     nindiv = opts.nindiv
     snpRate = opts.snprate
@@ -107,9 +120,15 @@ def SNPit(id, seq, SNPsFile, VcfFile, opts):
 
     haplo_ready = False
     indx = 0
+
+    # Storing all the haplotype information in the form a matrix 
+    # The reason for storing in the format is that I need to reguritate this info
+    # in vcf format
     haplMatrix = np.zeros(shape=(nindiv,2,numSNP), dtype=int)
 
+    # Parsing out MS output
     for line in output:
+        # this condition searches out for lines (from ms's output) containing information about the variant positions
         if re.match("positions:", line):
             posLine = line.strip().split(" ")
             haplo_ready = True
@@ -119,6 +138,7 @@ def SNPit(id, seq, SNPsFile, VcfFile, opts):
                 if i>1 and snpPos[i-1] == snpPos[i-2]:
                     snpPos[i-1] = snpPos[i-1] +1
     
+        # this condition looks for lines with individual's specificed haplotype configuration e.g. 1001101
         elif haplo_ready:
             haplotype = [int(l) for l in list(line)]
             #print(int(indx/2), haplotype, indx, nindiv*2)
@@ -157,8 +177,8 @@ def PrintIndivFasta(seq, SNPsFile, indx, id):
     
     context = {
     "seq": seq,
-    "hap": indx%2,
-    #"hap": 0,
+    #"hap": indx%2,
+    "hap": 0,
     "id": id
     }
 
@@ -283,16 +303,19 @@ yara = "{basePath}/align/YARA_{id}.bam"
 rnftools.mishmash.sample(reads[:-3],
                          reads_in_tuple=1)
 
-rnftools.mishmash.DwgSim(fasta=indiv_ref,
+#rnftools.mishmash.MasonIllumina(fasta=indiv_ref,
+#rnftools.mishmash.DwgSim(fasta=indiv_ref,
+rnftools.mishmash.ArtIllumina(fasta=indiv_ref,
                          read_length_1={lenR},
                          read_length_2=0,
-                         number_of_read_tuples={numReads}, # might not be fixed
+                        #coverage=4,
+			 number_of_read_tuples={numReads}, # might not be fixed
                          #haploid_mode = True, # currently the latest version contains bugs 
-                         error_rate_1=0.001, #0.001-0.05; default : 0.02
-                         mutation_rate =0.0001, # default : 0.001
-                         indels =0.1, # default: 0.1
-                         prob_indel_ext=0.1, # default: 0.3,
-                         other_params="-H",
+                         #error_rate_1=0.02, #0.001-0.05; default : 0.02
+                         #mutation_rate =0.0001, # default : 0.001
+                         #indels =0.1, # default: 0.1
+                         #prob_indel_ext=0.1, # default: 0.3,
+                         #other_params="-H",
                          )
                          
 # -y FLOAT      probability of a random DNA read [0.05]
@@ -326,8 +349,8 @@ include: rnftools.include()
     "basePath": os.path.abspath(""),
     "input": opts.input,
     "id": id,
-    "lenR": opts.len,
-    "numReads":nReads
+    "lenR": int(opts.len),
+    "numReads":int(nReads)
     }
     
     SnakeFile.write(template.format(**context))
@@ -365,20 +388,17 @@ if __name__ == '__main__':
     HeaderOut = open("data/fasta_header.csv", 'w')
     VcfFile = open("data/veritas.vcf", 'w')
     
-
-    getNumEntries(opts.input)
-    WriteVcfHeader(VcfFile, opts)
-    
     AllFasta = []
     for i in range(0,opts.nindiv):
         AllFasta.append(open("".join(["data/indiv_",str(i),".fasta"]), 'w'))
     AllFasta.append(open("data/ref/ref.fasta", 'w'))
+
+    numEntries = getNumEntries(opts.input)
+    WriteVcfHeader(VcfFile, opts)
     
     dnaSeqs = readFasta(FastaFile, HeaderOut)
-
     for i, dnaSeq in dnaSeqs:
-        SNPit(i, dnaSeq, AllFasta, VcfFile, opts)
-    
+        SNPit(i, numEntries, dnaSeq, AllFasta, VcfFile, opts)
     
     for i in range(opts.nindiv):
         makeRNFfiles(opts, i)
