@@ -30,6 +30,33 @@ def getNumEntries(inFASTA):
     return int(numLine)
 
 
+def GetPhred(fastQCpath):
+   
+    fastQC = open(fastQCpath, 'w')
+    
+    #get the maximum length of the read sequence
+    
+    i=1
+    readLen = 0;
+    for line in fastQC:
+        if (i%4==0):
+            a = len(line.strip())
+            readLen = max(a, readLen)
+        i = i + 1;
+        if(i>41):
+            break
+
+    qualMatrix = np.empty([45,readLen])
+    qualMatrix[:] = 0
+
+    for line in fastQC:
+        if (i%4==0):
+            for pos, ascii in enumerate(list(line.strip())):
+                indx = encode(ascii)-33
+                qualMatrix[indx,pos] += 1
+        i = i + 1;
+
+
 # This function writes the beginning header for the VCF file
 def WriteVcfHeader(VcfFile, opts):
 
@@ -172,13 +199,12 @@ def RetrieveSeq(hap,snpPos,modelSeq):
 
 def PrintIndivFasta(seq, SNPsFile, indx, id):
 
-    template=""">contig_{id}_{hap}
+    template=""">contig_{id}
 {seq}\n"""
     
     context = {
     "seq": seq,
     #"hap": indx%2,
-    "hap": 0,
     "id": id
     }
 
@@ -186,13 +212,13 @@ def PrintIndivFasta(seq, SNPsFile, indx, id):
 
 def PrintRefFasta(modelSeq, SNPsFile, id):
     
-    template=""">contig_{id}_{hap}
+    template=""">contig_{id}
 {seq}\n"""
     
     #context1 = {"seq": "".join(modelSeq[0]), "hap": "major", "id": id}
     #context2 = {"seq": "".join(modelSeq[1]), "hap": "minor", "id": id}
 
-    context1 = {"seq": "".join(modelSeq[0]), "hap": 0, "id": id}
+    context1 = {"seq": "".join(modelSeq[0]), "id": id}
     #context2 = {"seq": "".join(modelSeq[0]), "hap": 1, "id": id}
     
     SNPsFile.write(template.format(**context1))
@@ -272,7 +298,14 @@ def DivideRef(seq, tstvRate):
     return np.array([majorSeq, minorSeq])
 
 
+# I will not be using any of the MISMASH read simulator modules since none of them are
+# flexible enough to handle the type of desired simulated reads
 
+# For example: 
+# None of the programs provide any option in specifying the starting position of read samples
+# They are perfect for shotgun genomic simulator but not for simulating results from site-directed library assay (like ddrad)
+# Art Ilumina and Mason Illumina : difficulties in generating >250 reads 
+# DwgSim: Failure in generating mock read quality profiles
 
 def makeRNFfiles(opts, id):
 
@@ -355,24 +388,39 @@ include: rnftools.include()
     
     SnakeFile.write(template.format(**context))
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='simulate SNPs on ')
     parser.add_argument('-i','--input',required=True, default=None,type=str,help='relative input FASTA file path')
     parser.add_argument('-ms','--ms',required=True, default=None, type=str, help='local ms path')
     parser.add_argument('-n','--nindiv',required=False, default=4,type=int,help='number of individuals')
+    parser.add_argument('-l','--len',required=False, default=300, type=int, help='simulated read length')
+
+    # biological/true mutation and variation 
+    
     parser.add_argument('-s','--snprate',required=False, default=0.01,type=float,help='expected number of SNPs per bp')
     #parser.add_argument('-r','--recomb',required=False, default=0.5,type=double,help='recombination rate (0 to 0.5) ')
     parser.add_argument('-r','--rho',required=False, default=0,type=float,help='recombination param - 4Nr')
     parser.add_argument('-t','--tstv',required=False, default=3,type=float,help='transition to transversion ratio (>0)')
+    parser.add_argument('-smr','--smr',required=False, default=0.0001,type=float,help='expected bp rate for somatic or gamete mutation')
+    parser.add_argument('-ir', '--ir', require=False, default=0.1, type=float, help='fraction of mutations that are indels')
+    parser.add_argument('-ie', '--ie', require=False, default=0.3, type=float, help='Prob that an indel is extended')    
 
+    # Experimental and Sequencing errors
+    parser.add_argument('-qp', '--qp', require=True, default=None, type=str, help='path for fq file to construct qsuality profile ')    
+    parser.add_argument('-se', '--se', require=False, default=0.1, type=float, help='fraction of sequencing errors that are indels')
+
+    # Parameters for modulating different levels of read representations
+
+       # inidividual coverage
     parser.add_argument('-l','--len',required=False, default=300, type=int, help='simulated read length')
     parser.add_argument('-mR','--meanRead',required=False, default=10000, type=int, help='expected number of total reads per individual')
     parser.add_argument('-vR','--varRead',required=False, default=1000, type=int, help='variance of number of total reads per individual')
 
+       # haplotype effect
     parser.add_argument('-ha','--ha',required=False, default=2, type=float, help='alpha parameter of the binomial-beta that instantiates haplotype bias')
     parser.add_argument('-hb','--hb',required=False, default=2, type=float, help='beta parameter of the binomial-beta that instantiates haplotype bias')
 
+	# locus effect
     parser.add_argument('-ga','--ga',required=False, default=620, type=float, help='alpha parameter for gamma distrib that supports each locus-based dirichlet weight')
     parser.add_argument('-gb','--gb',required=False, default=1/700, type=float, help='beta parameter for gamma distrib that supports each locu-based dirichlet weight ')
 
@@ -400,8 +448,8 @@ if __name__ == '__main__':
     for i, dnaSeq in dnaSeqs:
         SNPit(i, numEntries, dnaSeq, AllFasta, VcfFile, opts)
     
-    for i in range(opts.nindiv):
-        makeRNFfiles(opts, i)
+    #for i in range(opts.nindiv):
+    #    makeRNFfiles(opts, i)
     
     FastaFile.close()
     HeaderOut.close()
