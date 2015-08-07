@@ -17,7 +17,7 @@
     individuals' genotype
     '''
 
-import os, sys, re, argparse, subprocess
+import os, sys, re, argparse, subprocess, string
 import numpy as np
 from scipy.stats import nbinom, beta
 import random
@@ -38,6 +38,10 @@ nuclDict = {
 'C1' : ['A', 'G'],
 'T1' : ['A', 'G'],
 'G1' : ['C', 'T'],
+'nA': ['C', 'G', 'T'],
+'nC': ['A', 'G', 'T'],
+'nG': ['A', 'C', 'T'],
+'nT': ['C', 'G', 'A'],
 'B': ['C', 'G', 'T'],
 'D': ['A', 'G', 'T'],
 'H': ['A', 'C', 'T'],
@@ -74,15 +78,21 @@ def GetPhred(fastQCpath):
         if(i>41):
             break
 
-    qualMatrix = np.empty([45,readLen])
+    qualMatrix = np.empty([readLen,45])
     qualMatrix[:] = 0
 
     for line in FASTQC:
         if (i%4==0):
             for pos, ascii in enumerate(list(line.strip())):
                 indx = min(ord(ascii)-33,44)
-                qualMatrix[indx,pos] += 1
+                try:
+                    qualMatrix[pos,indx] += 1
+                except IndexError:
+                    pass
         i = i + 1;
+
+    for pos in range(readLen):
+        qualMatrix[pos,] = qualMatrix[pos,]*1.0/sum(qualMatrix[pos,])
 
     return qualMatrix
 
@@ -208,7 +218,7 @@ def SNPit(id, coverageMatrix, seq, SNPsFile, VcfFile, opts):
             haplMatrix[int(indx/2),indx%2,] = haplotype
 
             indivSeq = RetrieveSeq(haplotype,snpPos,modelSeq)
-            PrintIndivFasta(id, indivSeq, SNPsFile[int(indx/2)], coverageMatrix[int(indx/2),indx%2, id-1])
+            PrintIndivFasta(id, indivSeq, indx, SNPsFile[int(indx/2)], coverageMatrix[int(indx/2),indx%2, id-1])
             indx = indx + 1
 
             ## stop the process when the number of individuals needed to print out is fulfilled
@@ -236,14 +246,14 @@ def RetrieveSeq(hap,snpPos,modelSeq):
     
     return "".join(modelSeq[indic,range(lenSeq)])
 
-def PrintIndivFasta(id, seq, SNPsFile, numRepeat):
+def PrintIndivFasta(id, seq, indx, SNPsFile, numRepeat):
 
-    template=""">contig_{id}
+    template=""">contig_{id}_{hap}
 {seq}\n"""
     
     context = {
     "seq": seq,
-    #"hap": indx%2,
+    "hap": indx%2,
     "id": id
     }
 
@@ -315,7 +325,7 @@ def DivideRef(seq, tstvRate, indelRate, extendRate):
     lenExt = np.random.geometric(p=1.0-extendRate, size=len(seq))-1        
 
     for i, n in enumerate(seq):
-        if n in ['N','B','D','H','V']:
+        if n == 'N':
             n = random.choice(nuclDict[n])
             majorSeq[i] = n
         
@@ -447,6 +457,51 @@ def CalculateCoverage(opts, numLoci):
             coverageMatrix[i,1,j] = coverageMatrix[i,1,j] - coverageMatrix[i,0,j]
     return coverageMatrix
 
+def ConvFastaToFastQc(i, phredMatrix, indelRate, readLen):
+    FASTA = open("".join(["data/indiv_",str(i),".fasta"]), 'r')
+    FASTQC = open("".join(["data/indiv_",str(i),".fq"]), 'w')
+    
+    adjIndx = [ max(0, round((indx+1) * phredMatrix.shape[0]/readLen)-1) for indx in range(readLen)]
+
+    for l, line in enumerate(FASTA):
+        if(l%2==0):
+            FASTQC.write(lines.replace(">","@"))
+        else:
+            seq = np.array(list(line.strip()))
+            acceptLen = min(len(seq),readLen)
+            seq = seq[:acceptLen]
+            
+            phredScore = [np.random.choice(45, p=np.phredMatrix[indx,]) for indx in adjIndx[:acceptLen]]
+            phredAdj = phredScore + (np.random.sample(acceptLen)-0.5)
+            
+            # 1 means invite sequence error!!
+            SeqErrorI = [np.random.binomial(1, pow(10, max(phred,0)/-10.0)) for phred in phredAdj]
+            SeqIndex = np.where(SeqErrorI==1)
+            
+            for index in SeqIndex:
+                if np.random.binomial(1, indelRate)==0:
+                    seq[index] = random.choice(nuclDict["n"+seq[index]])
+                else:
+                    if np.random.binomial(1,0.5):
+                        seq[index] = "" # deletion
+                    else:
+                        seq[index] = random.choice(nuclDict["n"+seq[index]]) +
+                            random.choice(nuclDict["N"])
+        
+            qualSeq = "".join([chr(i+33) for i in phreScore])
+            
+            template="""{seq}
++
+{qual}\n"""
+            context = {
+            "seq":seq,
+            "qual":qualSeq,
+            }
+            FASTQC.write(template.format(**context))
+
+    FASTA.close()
+    FASTQC.close()
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='simulate population-based ddrad short read illumina sequence from consensus sequences')
     parser.add_argument('-i','--input',required=True, default=None,type=str,help='relative input FASTA file path')
@@ -510,25 +565,24 @@ if __name__ == '__main__':
     dnaSeqs = readFasta(FastaFile, HeaderOut)
     for i, dnaSeq in dnaSeqs:
         SNPit(i, coverageMatrix, dnaSeq, AllFasta, VcfFile, opts)
-    
-    if opts.qp != None:
-        phredMatrix = GetPhred(opts.qp)
-        np.savetxt("data/ref/quality_profile.csv", phredMatrix, delimiter=',', fmt='%d')
-        np.save("~/data/ddrad/300bp_quality_profile.npy", phredMatrix)
-    else:
-        phredMatrix = np.load("~/data/ddrad/300bp_quality_profile") 
 
-    #for i in range(0,opts.nindiv):
-    #    fastqc = open("".join(["data/indiv_",str(i),".fq"]), 'w')
-    #    ConvFastaToFastQc(AllFasta[i], fastqc, phredMatrix, opts.se)
-    #    fastqc.close()
-
-    
-    #for i in range(opts.nindiv):
-    #    makeRNFfiles(opts, i)
-    
     FastaFile.close()
     HeaderOut.close()
     VcfFile.close()
     for i in range(0,opts.nindiv):
         AllFasta[i].close()
+
+    # Create quality profile for each individual FASTA file
+    if opts.qp != None:
+        phredMatrix = GetPhred(opts.qp)
+        np.savetxt("data/ref/quality_profile.csv", phredMatrix, delimiter=',')
+        np.save("data/ddrad/300bp_quality_profile.npy", phredMatrix)
+    else:
+        phredMatrix = np.load("data/ddrad/300bp_quality_profile.npy")
+
+    pool = mp.pool(processes = 4)
+    results = [pool.apply_async(ConvFastaToFastQc, args=(i, phredMatrix, opts.se, opts.len)) for i in range(opts.nindiv)]
+    
+    #for i in range(opts.nindiv):
+    #    makeRNFfiles(opts, i)
+
