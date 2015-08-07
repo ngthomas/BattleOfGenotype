@@ -4,6 +4,7 @@
 # version required Python3
 # numpy should be > v. 1.8
 # python ~/src/BattleOfGenotype/main/PopMs.py -i ~/data/ref/satro_orig_amplicons.fa -ms ~/src/ms/msdir/ms -qp ~/data/ddrad/lines.fq
+# python  ~/academic/anderson/BattleOfGenotype/src/BattleOfGenotype/main/PopMs.py -i /Users/work/academic/anderson/BattleOfGenotype/data/satro_orig_amplicons.fa -ms /Users/work/academic/anderson/BattleOfGenotype/src/ms.folder/msdir/ms -qp /Users/work/academic/anderson/BattleOfGenotype/data/satro_ddrad_S10_R1_400000_lines.fq
 
 '''
     This program takes a reference DNA sequence (from a FASTA file) and
@@ -457,8 +458,8 @@ def CalculateCoverage(opts, numLoci):
             coverageMatrix[i,1,j] = coverageMatrix[i,1,j] - coverageMatrix[i,0,j]
     return coverageMatrix
 
-def ConvPhredToError(phred):
-    return np.random.binomial(1, pow(10, max(phred,0)/-10.0))
+
+def RoundPos(i): return int(max(i,0))
 
 def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
 
@@ -474,12 +475,15 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
     numReads = sum(sum(coverageMatrix[i,]))
     indivPredMatrix = np.empty([readLen, numReads], dtype="int")
 
-    #PhredToError = np.vectorize(ConvPhredToError)
+    roundToPos = np.vectorize(RoundPos)
     for i in range(readLen): 
-        indivPredMatrix[i,] = np.random.choice(45, p=phredMatrix[adjIndx[i],], size=numReads) 
+        indivPredMatrix[i,] = np.random.choice(45, p=phredMatrix[adjIndx[i],], size=numReads)
 
-    #adjPhredMatrix = indivPredMatrix + (np.random.sample(readLen * numReads)- 0.5).reshape((readLen,numReads))
-    #adjPhredMatrix = PhredToError(adjPhredMatrix)
+    errorIndic = np.empty([45, readLen, numReads], dtype="bool")
+    for j in range(45):
+        errorIndic[j,] = np.random.binomial(1, pow(10, j/-10.0), readLen * numReads).reshape(readLen,numReads)
+
+    adjPhredMatrix = roundToPos(indivPredMatrix + (np.random.sample(readLen * numReads)*3- 1.5).reshape(readLen,numReads))
 
     for l, line in enumerate(FASTA):
         if(l%2==0):
@@ -490,14 +494,17 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
             seq = seq[:acceptLen]
             
             phredScore = indivPredMatrix[:acceptLen,int(l/2)]
-            phredAdj = phredScore + (np.random.sample(acceptLen)-0.5)
+            #phredAdj = phredScore + (np.random.sample(acceptLen)-0.5)
            
-            qualSeq = [chr(i+33) for i in phredScore] 
+            qualSeq = [chr(i+33) for i in phredScore]
+            SeqErrorI = errorIndic[adjPhredMatrix[:acceptLen,int(l/2)], np.arange(acceptLen), int(l/2)]
+            
             # 1 means invite sequence error!!
-            SeqErrorI = [np.random.binomial(1, pow(10, max(phred,0)/-10.0)) for phred in phredAdj]
+            #SeqErrorI = [np.random.binomial(1, pow(10, max(phred,0)/-10.0)) for phred in phredAdj]
             SeqIndex = np.where(SeqErrorI==1)
             
             for index in SeqIndex[0]:
+                FASTQC.write("Introduce error in position: {} \n".format(index))
                 if np.random.binomial(1, indelRate)==0:
                     seq[index] = random.choice(nuclDict["n"+seq[index]])
                 else:
