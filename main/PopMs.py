@@ -457,45 +457,64 @@ def CalculateCoverage(opts, numLoci):
             coverageMatrix[i,1,j] = coverageMatrix[i,1,j] - coverageMatrix[i,0,j]
     return coverageMatrix
 
-def ConvFastaToFastQc(i, phredMatrix, indelRate, readLen):
+def ConvPhredToError(phred):
+    return np.random.binomial(1, pow(10, max(phred,0)/-10.0))
+
+def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
+
+    random.seed()
+    np.random.seed()
+    print("Processing Individual ",i," \n");
     FASTA = open("".join(["data/indiv_",str(i),".fasta"]), 'r')
     FASTQC = open("".join(["data/indiv_",str(i),".fq"]), 'w')
     
-    adjIndx = [ max(0, round((indx+1) * phredMatrix.shape[0]/readLen)-1) for indx in range(readLen)]
+    predLen = phredMatrix.shape[0]
+    adjIndx = [ max(0, round((indx+1) * predLen/readLen)-1) for indx in range(readLen)]
+
+    numReads = sum(sum(coverageMatrix[i,]))
+    indivPredMatrix = np.empty([readLen, numReads], dtype="int")
+
+    #PhredToError = np.vectorize(ConvPhredToError)
+    for i in range(readLen): 
+        indivPredMatrix[i,] = np.random.choice(45, p=phredMatrix[adjIndx[i],], size=numReads) 
+
+    #adjPhredMatrix = indivPredMatrix + (np.random.sample(readLen * numReads)- 0.5).reshape((readLen,numReads))
+    #adjPhredMatrix = PhredToError(adjPhredMatrix)
 
     for l, line in enumerate(FASTA):
         if(l%2==0):
-            FASTQC.write(lines.replace(">","@"))
+            FASTQC.write(line.replace(">","@"))
         else:
             seq = np.array(list(line.strip()))
             acceptLen = min(len(seq),readLen)
             seq = seq[:acceptLen]
             
-            phredScore = [np.random.choice(45, p=np.phredMatrix[indx,]) for indx in adjIndx[:acceptLen]]
+            phredScore = indivPredMatrix[:acceptLen,int(l/2)]
             phredAdj = phredScore + (np.random.sample(acceptLen)-0.5)
-            
+           
+            qualSeq = [chr(i+33) for i in phredScore] 
             # 1 means invite sequence error!!
             SeqErrorI = [np.random.binomial(1, pow(10, max(phred,0)/-10.0)) for phred in phredAdj]
             SeqIndex = np.where(SeqErrorI==1)
             
-            for index in SeqIndex:
+            for index in SeqIndex[0]:
                 if np.random.binomial(1, indelRate)==0:
                     seq[index] = random.choice(nuclDict["n"+seq[index]])
                 else:
                     if np.random.binomial(1,0.5):
                         seq[index] = "" # deletion
+                        qualSeq[index] = ""
                     else:
-                        seq[index] = random.choice(nuclDict["n"+seq[index]]) +
-                            random.choice(nuclDict["N"])
-        
-            qualSeq = "".join([chr(i+33) for i in phreScore])
+                        seq[index] = random.choice(nuclDict["n"+seq[index]]) + random.choice(nuclDict["N"])
+                        qualSeq[index]=qualSeq[index] + qualSeq[index]
+
             
             template="""{seq}
 +
 {qual}\n"""
             context = {
-            "seq":seq,
-            "qual":qualSeq,
+            "seq":"".join(seq),
+            "qual":"".join(qualSeq),
             }
             FASTQC.write(template.format(**context))
 
@@ -561,6 +580,8 @@ if __name__ == '__main__':
     #print("Number of Entries ", numEntries)
     WriteVcfHeader(VcfFile, opts)
     coverageMatrix = CalculateCoverage(opts, numEntries)
+
+    np.save("data/coverage_matrix.npy", coverageMatrix)
     
     dnaSeqs = readFasta(FastaFile, HeaderOut)
     for i, dnaSeq in dnaSeqs:
@@ -576,13 +597,14 @@ if __name__ == '__main__':
     if opts.qp != None:
         phredMatrix = GetPhred(opts.qp)
         np.savetxt("data/ref/quality_profile.csv", phredMatrix, delimiter=',')
-        np.save("data/ddrad/300bp_quality_profile.npy", phredMatrix)
+        np.save("data/300bp_quality_profile.npy", phredMatrix)
     else:
-        phredMatrix = np.load("data/ddrad/300bp_quality_profile.npy")
+        phredMatrix = np.load("data/300bp_quality_profile.npy")
 
-    pool = mp.pool(processes = 4)
-    results = [pool.apply_async(ConvFastaToFastQc, args=(i, phredMatrix, opts.se, opts.len)) for i in range(opts.nindiv)]
-    
+    pool = mp.Pool(processes = 4)
+    results = [pool.apply_async(ConvFastaToFastQc, args=(i, phredMatrix, coverageMatrix, opts.se, opts.len)) for i in range(opts.nindiv)]
+    for r in results:
+        r.get()
     #for i in range(opts.nindiv):
     #    makeRNFfiles(opts, i)
 
