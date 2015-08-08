@@ -18,7 +18,7 @@
     individuals' genotype
     '''
 
-import os, sys, re, argparse, subprocess, string
+import os, sys, re, argparse, subprocess, string, gc
 import numpy as np
 from scipy.stats import nbinom, beta
 import random
@@ -469,10 +469,13 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
     FASTA = open("".join(["data/indiv_",str(i),".fasta"]), 'r')
     FASTQC = open("".join(["data/indiv_",str(i),".fq"]), 'w')
     
+    processSize = 100000
+    totReads = sum(sum(coverageMatrix[i,]))
+    numReads = min(processSize, totReads)
+
     predLen = phredMatrix.shape[0]
     adjIndx = [ max(0, round((indx+1) * predLen/readLen)-1) for indx in range(readLen)]
 
-    numReads = sum(sum(coverageMatrix[i,]))
     indivPredMatrix = np.empty([readLen, numReads], dtype="int")
 
     roundToPos = np.vectorize(RoundPos)
@@ -485,7 +488,9 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
 
     adjPhredMatrix = roundToPos(indivPredMatrix + (np.random.sample(readLen * numReads)*3- 1.5).reshape(readLen,numReads))
 
+    ct = 0
     for l, line in enumerate(FASTA):
+    
         if(l%2==0):
             FASTQC.write(line.replace(">","@"))
         else:
@@ -493,18 +498,43 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
             acceptLen = min(len(seq),readLen)
             seq = seq[:acceptLen]
             
-            phredScore = indivPredMatrix[:acceptLen,int(l/2)]
+            try:            
+                phredScore = indivPredMatrix[:acceptLen,ct]
+            except IndexError:
+                numReadRevised = min(processSize, totReads-int((l+1)/2))
+       
+                del indivPredMatrix
+                del errorIndic
+                #gc.collect()
+                print("Generating ", int(l/2), "reads for individual ", i, "\n")
+
+                if (numReadRevised != numReads):
+                    numReads = numReadRevised
+                
+                indivPredMatrix = np.empty([readLen, numReads], dtype="int")
+                errorIndic = np.empty([45, readLen, numReads], dtype="bool")
+
+                for i in range(readLen): 
+                    indivPredMatrix[i,] = np.random.choice(45, p=phredMatrix[adjIndx[i],], size=numReads)
+                for j in range(45):
+                    errorIndic[j,] = np.random.binomial(1, pow(10, j/-10.0), readLen * numReads).reshape(readLen,numReads)
+
+                adjPhredMatrix = roundToPos(indivPredMatrix + (np.random.sample(readLen * numReads)*3- 1.5).reshape(readLen,numReads))
+                ct = 0
+
+
+
             #phredAdj = phredScore + (np.random.sample(acceptLen)-0.5)
            
             qualSeq = [chr(i+33) for i in phredScore]
-            SeqErrorI = errorIndic[adjPhredMatrix[:acceptLen,int(l/2)], np.arange(acceptLen), int(l/2)]
+            SeqErrorI = errorIndic[adjPhredMatrix[:acceptLen,ct], np.arange(acceptLen), ct]
             
             # 1 means invite sequence error!!
             #SeqErrorI = [np.random.binomial(1, pow(10, max(phred,0)/-10.0)) for phred in phredAdj]
             SeqIndex = np.where(SeqErrorI==1)
             
             for index in SeqIndex[0]:
-                FASTQC.write("Introduce error in position: {} \n".format(index))
+                #FASTQC.write("Introduce error in position: {} \n".format(index))
                 if np.random.binomial(1, indelRate)==0:
                     seq[index] = random.choice(nuclDict["n"+seq[index]])
                 else:
@@ -524,6 +554,7 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
             "qual":"".join(qualSeq),
             }
             FASTQC.write(template.format(**context))
+            ct = ct + 1
 
     FASTA.close()
     FASTQC.close()
@@ -555,7 +586,7 @@ if __name__ == '__main__':
     # Parameters for modulating different layers in read representations
 
        # inidividual coverage
-    parser.add_argument('-mR','--meanRead',required=False, default=10000, type=int, help='expected number of total reads per individual')
+    parser.add_argument('-mR','--meanRead',required=False, default=200000, type=int, help='expected number of total reads per individual')
     parser.add_argument('-vR','--varRead',required=False, default=1000, type=int, help='variance of number of total reads per individual')
 
        # haplotype effect
