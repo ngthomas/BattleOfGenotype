@@ -357,7 +357,7 @@ def DivideRef(seq, tstvRate, indelRate, extendRate):
 
 def makeRNFfiles(opts, id):
 
-    path = "".join(["snake/indiv_",str(id)])
+    path = "".join(["data/rnf/snake/indiv_",str(id)])
     if not os.path.exists(path):
         os.makedirs(path)
     
@@ -458,6 +458,20 @@ def CalculateCoverage(opts, numLoci):
             coverageMatrix[i,1,j] = coverageMatrix[i,1,j] - coverageMatrix[i,0,j]
     return coverageMatrix
 
+def PrintCoverageMatrix(coverageMatrix, CVFILE):
+
+    flatIter = coverageMatrix.flat
+    indxIter = np.ndindex(coverageMatrix.shape)
+
+    CVFILE.write("#indiv,haplotype,locus\n")
+    for i in flatIter:
+        indx = indxIter.next()
+        
+        CVFILE.write(",".join(str(indx[0]+1),
+                              str(indx[1]),
+                              str(indx[2]+1),
+                              str(i)+"\n")
+
 
 def RoundPos(i): return int(max(i,0))
 
@@ -466,8 +480,8 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
     random.seed()
     np.random.seed()
     print("Processing Individual ",i," \n");
-    FASTA = open("".join(["data/indiv_",str(i),".fasta"]), 'r')
-    FASTQC = open("".join(["data/indiv_",str(i),".fq"]), 'w')
+    FASTA = open("".join(["data/seq/indiv_",str(i+1),".fasta"]), 'r')
+    FASTQC = open("".join(["data/seq/indiv_",str(i+1),".fq"]), 'w')
     
     processSize = 100000
     totReads = sum(sum(coverageMatrix[i,]))
@@ -477,12 +491,12 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
     adjIndx = [ max(0, round((indx+1) * predLen/readLen)-1) for indx in range(readLen)]
 
     indivPredMatrix = np.empty([readLen, numReads], dtype="int")
+    errorIndic = np.empty([45, readLen, numReads], dtype="bool")
 
     roundToPos = np.vectorize(RoundPos)
+    
     for i in range(readLen): 
         indivPredMatrix[i,] = np.random.choice(45, p=phredMatrix[adjIndx[i],], size=numReads)
-
-    errorIndic = np.empty([45, readLen, numReads], dtype="bool")
     for j in range(45):
         errorIndic[j,] = np.random.binomial(1, pow(10, j/-10.0), readLen * numReads).reshape(readLen,numReads)
 
@@ -601,48 +615,54 @@ if __name__ == '__main__':
     opts = parser.parse_args()
     #/Users/work/academic/anderson/BattleOfGenotype/src/ms.folder/msdir/ms
     
-    for i in ["data", "snake", "align", "data/ref", "sim"]:
+    for i in ["data", "data/rnf", "data/seq", "data/veritas",
+              "analysis", "analysis/align", "analysis/geno"]:
         if not os.path.exists(i):
             os.makedirs(i)
     
-    FastaFile = open(opts.input,'r')
-    HeaderOut = open("data/fasta_header.csv", 'w')
-    VcfFile = open("data/veritas.vcf", 'w')
-    
+    FASTAFILE = open(opts.input,'r')
+    HEADERFILE = open("data/veritas/header_info.csv", 'w')
+    VCFFILE = open("data/veritas/genotype.vcf", 'w')
+    CVFILE = open("data/veritas/coverage.csv", 'w')
+
     AllFasta = []
     for i in range(0,opts.nindiv):
-        AllFasta.append(open("".join(["data/indiv_",str(i),".fasta"]), 'w'))
-    AllFasta.append(open("data/ref/ref.fasta", 'w'))
+        AllFasta.append(open("".join(["data/seq/indiv_",str(i+1),".fasta"]), 'w'))
+    AllFasta.append(open("data/veritas/ref_sequence.fasta", 'w'))
 
     numEntries = GetNumEntries(opts.input)
     #print("Number of Entries ", numEntries)
-    WriteVcfHeader(VcfFile, opts)
+    WriteVcfHeader(VCFFILE, opts)
+
     coverageMatrix = CalculateCoverage(opts, numEntries)
-
-    np.save("data/coverage_matrix.npy", coverageMatrix)
+    PrintCoverageMatrix(coverageMatrix, CVFILE)
+    np.save("data/veritas/coverage_matrix.npy", coverageMatrix)
     
-    dnaSeqs = readFasta(FastaFile, HeaderOut)
+    dnaSeqs = readFasta(FASTAFILE, HEADERFILE)
     for i, dnaSeq in dnaSeqs:
-        SNPit(i, coverageMatrix, dnaSeq, AllFasta, VcfFile, opts)
+        SNPit(i, coverageMatrix, dnaSeq, AllFasta, VCFFILE, opts)
 
-    FastaFile.close()
-    HeaderOut.close()
-    VcfFile.close()
-    for i in range(0,opts.nindiv):
+    # closing all file handler
+    FASTAFILE.close()
+    HEADERFILE.close()
+    VCFFILE.close()
+    CVFILE.close()
+    for i in range(0,opts.nindiv+1):
         AllFasta[i].close()
 
     # Create quality profile for each individual FASTA file
     if opts.qp != None:
         phredMatrix = GetPhred(opts.qp)
-        np.savetxt("data/ref/quality_profile.csv", phredMatrix, delimiter=',')
-        np.save("data/300bp_quality_profile.npy", phredMatrix)
+        np.savetxt("data/veritas/quality_profile.csv", phredMatrix, delimiter=',')
+        np.save("data/veritas/300bp_quality_profile.npy", phredMatrix)
     else:
-        phredMatrix = np.load("data/300bp_quality_profile.npy")
+        phredMatrix = np.load("data/veritas/300bp_quality_profile.npy")
 
     pool = mp.Pool(processes = 4)
     results = [pool.apply_async(ConvFastaToFastQc, args=(i, phredMatrix, coverageMatrix, opts.se, opts.len)) for i in range(opts.nindiv)]
     for r in results:
         r.get()
+
     #for i in range(opts.nindiv):
     #    makeRNFfiles(opts, i)
 
