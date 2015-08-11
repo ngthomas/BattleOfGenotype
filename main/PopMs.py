@@ -3,7 +3,7 @@
 
 # version required Python3
 # numpy should be > v. 1.8
-# python ~/src/BattleOfGenotype/main/PopMs.py -i ~/data/ref/satro_orig_amplicons.fa -ms ~/src/ms/msdir/ms -qp ~/data/ddrad/lines.fq
+# python ~/src/BattleOfGenotype/main/PopMs.py -i ~/data/ref/satro_orig_amplicons.fa -ms ~/src/ms/msdir/ms -qp ~/data/ddrad/lines.fq -mR 50000
 # python  ~/academic/anderson/BattleOfGenotype/src/BattleOfGenotype/main/PopMs.py -i /Users/work/academic/anderson/BattleOfGenotype/data/satro_orig_amplicons.fa -ms /Users/work/academic/anderson/BattleOfGenotype/src/ms.folder/msdir/ms -qp /Users/work/academic/anderson/BattleOfGenotype/data/satro_ddrad_S10_R1_400000_lines.fq
 
 '''
@@ -107,7 +107,7 @@ def WriteVcfHeader(VcfFile, opts):
 ##phasing=known
 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t"""
     
-    template = template + "\t".join(["".join(["INDIV_",str(i)]) for i in range(0,opts.nindiv)])+ "\n"
+    template = template + "\t".join(["".join(["INDIV_",str(i+1)]) for i in range(0,opts.nindiv)])+ "\n"
     
     context = {
     "fastaFile": opts.input
@@ -130,15 +130,15 @@ def readFasta(FastaFile, HeaderOut):
     i = 0
     for line in FastaFile:
         if re.match(">", line):
+            i = i + 1
             HeaderOut.write("\t".join([str(i), line]))
             if dnaSeq != "":
-                i = i + 1
-                yield i, dnaSeq
+                yield i-1, dnaSeq
                 dnaSeq = ""
         else:
             dnaSeq = dnaSeq + line.strip()
+
     if dnaSeq != "":
-        i = i + 1
         yield i, dnaSeq
 
 '''
@@ -197,7 +197,7 @@ def SNPit(id, coverageMatrix, seq, SNPsFile, VcfFile, opts):
     # The reason for storing in the format is that I need to reguritate this info
     # in vcf format
     haplMatrix = np.zeros(shape=(nindiv,2,numSNP), dtype=int)
-
+    
     # Parsing out MS output
     for line in output:
         # I am looking out for line that contain any information about the variant positions
@@ -463,14 +463,14 @@ def PrintCoverageMatrix(coverageMatrix, CVFILE):
     flatIter = coverageMatrix.flat
     indxIter = np.ndindex(coverageMatrix.shape)
 
-    CVFILE.write("#indiv,haplotype,locus\n")
+    CVFILE.write("#indiv,haplotype,locus,numReads\n")
     for i in flatIter:
         indx = indxIter.next()
         
-        CVFILE.write(",".join(str(indx[0]+1),
+        CVFILE.write(",".join([str(indx[0]+1),
                               str(indx[1]),
                               str(indx[2]+1),
-                              str(i)+"\n")
+                              str(i)+"\n"]))
 
 
 def RoundPos(i): return int(max(i,0))
@@ -479,7 +479,7 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
 
     random.seed()
     np.random.seed()
-    print("Processing Individual ",i," \n");
+    print("Processing Individual ",i+1," \n");
     FASTA = open("".join(["data/seq/indiv_",str(i+1),".fasta"]), 'r')
     FASTQC = open("".join(["data/seq/indiv_",str(i+1),".fq"]), 'w')
     
@@ -506,7 +506,7 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
     for l, line in enumerate(FASTA):
     
         if(l%2==0):
-            FASTQC.write(line.replace(">","@"))
+            FASTQC.write(line.replace(">","@"+str(int((l/2)+1))+"_" ))
         else:
             seq = np.array(list(line.strip()))
             acceptLen = min(len(seq),readLen)
@@ -520,7 +520,7 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
                 del indivPredMatrix
                 del errorIndic
                 #gc.collect()
-                print("Generating ", int(l/2), "reads for individual ", i, "\n")
+                print("Generating ", int(l/2), "reads for individual ", i+1, "\n")
 
                 if (numReadRevised != numReads):
                     numReads = numReadRevised
@@ -573,6 +573,11 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
     FASTA.close()
     FASTQC.close()
 
+#bwa index -p Satrovirens_amplicons_gtseq3 -a is Satrovirens_amplicons_gtseq3.fa
+#http://161.55.237.25/~newmedusa/dokuwiki/doku.php?id=projects:rockfish_gtseq_run3_25may2015
+#for i in {1..96}; do bwa mem -aM -v 3 -t 12 -R "@RG\tID:s${i}\tLB:amplicon\tPL:ILLUMINA\tSM:rock${i}" ./Satrovirens_amplicons_gtseq3 ../trimfilter/rock_S${i}_L001_R1_001_val_1.fq.gz ../trimfilter/rock_S${i}_L001_R2_001_val_2.fq.gz > ./satro_s${i}_aln.sam; done
+#for i in {1..96}; do samtools view -bS satro_s${i}_aln.sam > satro_s${i}.bam; done
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='simulate population-based ddrad short read illumina sequence from consensus sequences')
     parser.add_argument('-i','--input',required=True, default=None,type=str,help='relative input FASTA file path')
@@ -600,8 +605,8 @@ if __name__ == '__main__':
     # Parameters for modulating different layers in read representations
 
        # inidividual coverage
-    parser.add_argument('-mR','--meanRead',required=False, default=200000, type=int, help='expected number of total reads per individual')
-    parser.add_argument('-vR','--varRead',required=False, default=1000, type=int, help='variance of number of total reads per individual')
+    parser.add_argument('-mR','--meanRead',required=False, default=100000, type=int, help='expected number of total reads per individual')
+    parser.add_argument('-vR','--varRead',required=False, default=15000, type=int, help='variance of number of total reads per individual')
 
        # haplotype effect
     parser.add_argument('-ha','--ha',required=False, default=2, type=float, help='alpha parameter of the binomial-beta that instantiates haplotype bias')
@@ -640,6 +645,7 @@ if __name__ == '__main__':
     
     dnaSeqs = readFasta(FASTAFILE, HEADERFILE)
     for i, dnaSeq in dnaSeqs:
+        #print(str(i),"--");
         SNPit(i, coverageMatrix, dnaSeq, AllFasta, VCFFILE, opts)
 
     # closing all file handler
