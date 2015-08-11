@@ -448,7 +448,11 @@ def CalculateCoverage(opts, numLoci):
     scale = variance /mean
     nReads= np.random.gamma(shape, scale, opts.nindiv)
 
-    lociWeight = np.random.gamma(opts.ga, 1/opts.gb, numLoci)
+    if opts.logNormal:
+        lociWeight = np.random.lognormal(opts.lm, opts.lsd, numLoci) 
+    else:
+        lociWeight = np.random.gamma(opts.ga, 1/opts.gb, numLoci)
+
     lociProb = np.random.dirichlet(alpha=lociWeight, size=1)
     for i in range(opts.nindiv):
         coverageMatrix[i,1,] = np.random.multinomial(n=nReads[i], pvals=lociProb[0], size=1)
@@ -570,6 +574,8 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
             FASTQC.write(template.format(**context))
             ct = ct + 1
 
+    del indivPredMatrix
+    del errorIndic
     FASTA.close()
     FASTQC.close()
 
@@ -590,35 +596,41 @@ if __name__ == '__main__':
     # biological/true mutation and variation
     # assumption: limit to biallelic variants for SNPs
     
-    parser.add_argument('-s','--snprate',required=False, default=0.01,type=float,help='expected number of SNPs per bp')
+    parser.add_argument('-s','--snprate',default=0.01,type=float,help='expected number of SNPs per bp')
     #parser.add_argument('-r','--recomb',required=False, default=0.5,type=double,help='recombination rate (0 to 0.5) ')
-    parser.add_argument('-r','--rho',required=False, default=0,type=float,help='recombination param - 4Nr')
-    parser.add_argument('-t','--tstv',required=False, default=3,type=float,help='transition to transversion ratio (>0)')
+    parser.add_argument('-r','--rho', default=0,type=float,help='recombination param - 4Nr')
+    parser.add_argument('-t','--tstv', default=3,type=float,help='transition to transversion ratio (>0)')
     #parser.add_argument('-smr','--smr',required=False, default=0.0001,type=float,help='expected bp rate for somatic or gamete mutation') #ignoring this for now; since it is such an extreme infrequent case
-    parser.add_argument('-ir', '--ir', required=False, default=0.05, type=float, help='fraction of mutations that are indels')
-    parser.add_argument('-er', '--er', required=False, default=0.3, type=float, help='Prob that an indel is extended')    
+    parser.add_argument('-ir', '--ir', default=0.05, type=float, help='fraction of mutations that are indels')
+    parser.add_argument('-er', '--er', default=0.3, type=float, help='Prob that an indel is extended')    
 
     # Experimental and sequencing errors
-    parser.add_argument('-qp', '--qp', required=False, default=None, type=str, help='path for fq file to construct quality profile ')    
-    parser.add_argument('-se', '--se', required=False, default=0.01, type=float, help='fraction of sequencing errors that are indels')
+    parser.add_argument('-qp', '--qp', default=None, type=str, help='path for fq file to construct quality profile ')    
+    parser.add_argument('-se', '--se', default=0.01, type=float, help='fraction of sequencing errors that are indels')
 
     # Parameters for modulating different layers in read representations
 
        # inidividual coverage
-    parser.add_argument('-mR','--meanRead',required=False, default=100000, type=int, help='expected number of total reads per individual')
-    parser.add_argument('-vR','--varRead',required=False, default=15000, type=int, help='variance of number of total reads per individual')
+    parser.add_argument('-mR','--meanRead', default=100000, type=int, help='expected number of total reads per individual')
+    parser.add_argument('-vR','--varRead', default=15000, type=int, help='variance of number of total reads per individual')
 
        # haplotype effect
-    parser.add_argument('-ha','--ha',required=False, default=2, type=float, help='alpha parameter of the binomial-beta that instantiates haplotype bias')
-    parser.add_argument('-hb','--hb',required=False, default=2, type=float, help='beta parameter of the binomial-beta that instantiates haplotype bias')
+    parser.add_argument('-ha','--ha', default=2, type=float, help='alpha parameter of the binomial-beta that instantiates haplotype bias')
+    parser.add_argument('-hb','--hb', default=2, type=float, help='beta parameter of the binomial-beta that instantiates haplotype bias')
 
-	# locus effect
-    parser.add_argument('-ga','--ga',required=False, default=620, type=float, help='alpha parameter for gamma distrib that supports each locus-based dirichlet weight')
-    parser.add_argument('-gb','--gb',required=False, default=1.0/700, type=float, help='beta parameter for gamma distrib that supports each locu-based dirichlet weight ')
+       # locus effect: either described with gamma prior to support multinomial-dirchlet or log-normal (log-normal: will be used as default)
+    parser.add_argument('-gm','--gModel', action='store_true', help='locus effect will be based on higher level gamma model') 
+    parser.add_argument('-ga','--ga', default=620, type=float, help='alpha parameter for gamma distrib that supports each locus-based dirichlet weight')
+    parser.add_argument('-gb','--gb', default=1.0/700, type=float, help='beta parameter for gamma distrib that supports each locu-based dirichlet weight ')
 
+    parser.add_argument('-ln','--logNormal', action='store_true', help='locus effect will be based on higher level gamma model (default) ') 
+    parser.add_argument('-lm','--lm', default=2, type=float, help='alpha parameter for gamma distrib that supports each locus-based dirichlet weight')
+    parser.add_argument('-lsd','--lsd', default=0.1, type=float, help='beta parameter for gamma distrib that supports each locu-based dirichlet weight ')
 
     opts = parser.parse_args()
     #/Users/work/academic/anderson/BattleOfGenotype/src/ms.folder/msdir/ms
+    if(opts.gModel + opts.logNormal == 0): 
+        opts.logNormal = True 
     
     for i in ["data", "data/rnf", "data/seq", "data/veritas",
               "analysis", "analysis/align", "analysis/geno"]:
