@@ -479,16 +479,16 @@ def PrintCoverageMatrix(coverageMatrix, CVFILE):
 
 def RoundPos(i): return int(max(i,0))
 
-def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
+def ConvFastaToFastQc(indivID, phredMatrix, coverageMatrix, indelRate, readLen):
 
     random.seed()
     np.random.seed()
-    print("Processing Individual ",i+1," \n");
-    FASTA = open("".join(["data/seq/indiv_",str(i+1),".fasta"]), 'r')
-    FASTQC = open("".join(["data/seq/indiv_",str(i+1),".fq"]), 'w')
+    print("Processing Individual ",indivID+1," \n");
+    FASTA = open("".join(["data/seq/indiv_",str(indivID+1),".fasta"]), 'r')
+    FASTQC = open("".join(["data/seq/indiv_",str(indivID+1),".fq"]), 'w')
     
-    processSize = 100000
-    totReads = sum(sum(coverageMatrix[i,]))
+    processSize = 100000#10000#100000
+    totReads = sum(sum(coverageMatrix[indivID,]))
     numReads = min(processSize, totReads)
 
     predLen = phredMatrix.shape[0]
@@ -519,16 +519,18 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
             try:            
                 phredScore = indivPredMatrix[:acceptLen,ct]
             except IndexError:
-                numReadRevised = min(processSize, totReads-int((l+1)/2))
+                print ("==", totReads-int(l/2), " vs ", processSize);
+                numReadRevised = min(processSize, totReads-int(l/2))
        
                 del indivPredMatrix
                 del errorIndic
                 #gc.collect()
-                print("Generating ", int(l/2), "reads for individual ", i+1, "\n")
+                print("Generating ", int(l/2), "reads for individual ", indivID+1)
 
                 if (numReadRevised != numReads):
                     numReads = numReadRevised
                 
+                print("ReadLen: ", readLen, " numReads: ", numReads, " for indiv ", indivID+1, "\n")
                 indivPredMatrix = np.empty([readLen, numReads], dtype="int")
                 errorIndic = np.empty([45, readLen, numReads], dtype="bool")
 
@@ -539,6 +541,7 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
 
                 adjPhredMatrix = roundToPos(indivPredMatrix + (np.random.sample(readLen * numReads)*3- 1.5).reshape(readLen,numReads))
                 ct = 0
+                phredScore = indivPredMatrix[:acceptLen,ct]
 
 
 
@@ -583,6 +586,21 @@ def ConvFastaToFastQc(i, phredMatrix, coverageMatrix, indelRate, readLen):
 #http://161.55.237.25/~newmedusa/dokuwiki/doku.php?id=projects:rockfish_gtseq_run3_25may2015
 #for i in {1..96}; do bwa mem -aM -v 3 -t 12 -R "@RG\tID:s${i}\tLB:amplicon\tPL:ILLUMINA\tSM:rock${i}" ./Satrovirens_amplicons_gtseq3 ../trimfilter/rock_S${i}_L001_R1_001_val_1.fq.gz ../trimfilter/rock_S${i}_L001_R2_001_val_2.fq.gz > ./satro_s${i}_aln.sam; done
 #for i in {1..96}; do samtools view -bS satro_s${i}_aln.sam > satro_s${i}.bam; done
+
+#~/src/bowtie/bowtie2-2.2.5/bowtie2-build data/veritas/ref_sequence.fasta analysis/align/ref_sequence
+#~/src/bowtie/bowtie2-2.2.5/bowtie2 -x analysis/align/ref_sequence -q data/seq/indiv_1.fq -S analysis/align/indiv_1_bowtie.sam
+
+#~/src/bwa/bwa/bwa mem -a -v 1 -t 1 -R "@RG\tID:s1\tLB:amplicon\tPL:ILLUMINA\tSM:rock1" analysis/align/ref_sequence data/seq/indiv_1.fq > analysis/align/indiv_1_aln.sam0
+
+def MakeBWAIndex():
+    cmd = "bwa index -a is -p analysis/align/ref_sequence data/veritas/ref_sequence.fasta"
+    subprocess.check_output(cmd,shell=True)
+
+def AlignIndiv(indivID):
+    cmd = "".join(['bwa mem -aM -v 1 -t 1 -R "@RG\tID:s',str(indivID+1),'\tLB:amplicon\tPL:ILLUMINA\tSM:rock',str(indivID+1),'" analysis/align/ref_sequence data/seq/indiv_',str(indivID+1),'.fq > analysis/align/indiv_',str(indivID+1),'_aln.sam'])
+    subprocess.check_output(cmd,shell=True)
+    cmd = "".join(['samtools view -bS analysis/align/indiv_',str(indivID+1),'_aln.sam > analysis/align/indiv_',str(indivID+1),'.bam'])
+    subprocess.check_output(cmd,shell=True)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='simulate population-based ddrad short read illumina sequence from consensus sequences')
@@ -680,6 +698,15 @@ if __name__ == '__main__':
     results = [pool.apply_async(ConvFastaToFastQc, args=(i, phredMatrix, coverageMatrix, opts.se, opts.len)) for i in range(opts.nindiv)]
     for r in results:
         r.get()
+
+    print("Alignment Time")
+    # Alignment
+    MakeBWAIndex()
+    results = [pool.apply_async(AlignIndiv, args=[i]) for i in range(opts.nindiv)]
+    for r in results:
+        r.get()
+
+
 
     #for i in range(opts.nindiv):
     #    makeRNFfiles(opts, i)
