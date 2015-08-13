@@ -486,6 +486,7 @@ def ConvFastaToFastQc(indivID, phredMatrix, coverageMatrix, indelRate, readLen):
     print("Processing Individual ",indivID+1," \n");
     FASTA = open("".join(["data/seq/indiv_",str(indivID+1),".fasta"]), 'r')
     FASTQC = open("".join(["data/seq/indiv_",str(indivID+1),".fq"]), 'w')
+    ERROR = open("".join(["data/seq/seqerr_",str(indivID+1),".txt"]), 'w')
     
     processSize = 100000#10000#100000
     totReads = sum(sum(coverageMatrix[indivID,]))
@@ -512,7 +513,7 @@ def ConvFastaToFastQc(indivID, phredMatrix, coverageMatrix, indelRate, readLen):
         if(l%2==0):
             FASTQC.write(line.replace(">","@"+str(int((l/2)+1))+"_" ))
         else:
-            seq = np.array(list(line.strip()))
+            seq = list(line.strip()) # if i choose numpy.array beware of the dtype since some characters might get trimmed out pending on the dtype
             acceptLen = min(len(seq),readLen)
             seq = seq[:acceptLen]
             
@@ -555,7 +556,7 @@ def ConvFastaToFastQc(indivID, phredMatrix, coverageMatrix, indelRate, readLen):
             SeqIndex = np.where(SeqErrorI==1)
             
             for index in SeqIndex[0]:
-                #FASTQC.write("Introduce error in position: {} \n".format(index))
+                ERROR.write("Entries:\t{}\tpos:\t{}\t{}\t".format(int(l/2)+1, index, seq[index]))
                 if np.random.binomial(1, indelRate)==0:
                     seq[index] = random.choice(nuclDict["n"+seq[index]])
                 else:
@@ -566,6 +567,7 @@ def ConvFastaToFastQc(indivID, phredMatrix, coverageMatrix, indelRate, readLen):
                         seq[index] = random.choice(nuclDict["n"+seq[index]]) + random.choice(nuclDict["N"])
                         qualSeq[index]=qualSeq[index] + qualSeq[index]
 
+                ERROR.write("{}\t{}\n".format(seq[index], qualSeq[index]))
             
             template="""{seq}
 +
@@ -581,6 +583,7 @@ def ConvFastaToFastQc(indivID, phredMatrix, coverageMatrix, indelRate, readLen):
     del errorIndic
     FASTA.close()
     FASTQC.close()
+    ERROR.close()
 
 #bwa index -p Satrovirens_amplicons_gtseq3 -a is Satrovirens_amplicons_gtseq3.fa
 #http://161.55.237.25/~newmedusa/dokuwiki/doku.php?id=projects:rockfish_gtseq_run3_25may2015
