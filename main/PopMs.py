@@ -511,7 +511,7 @@ def ConvFastaToFastQc(indivID, phredMatrix, coverageMatrix, indelRate, readLen):
     for l, line in enumerate(FASTA):
     
         if(l%2==0):
-            FASTQC.write(line.replace(">","@"+str(int((l/2)+1))+"_" ))
+            FASTQC.write(line.replace(">","@"+str(int((l/2)+1))+"_" ).strip() + "_" + str(indivID+1) +"\n")
         else:
             seq = list(line.strip()) # if i choose numpy.array beware of the dtype since some characters might get trimmed out pending on the dtype
             acceptLen = min(len(seq),readLen)
