@@ -604,11 +604,15 @@ def AlignIndiv(indivID):
     subprocess.check_output(cmd,shell=True)
     cmd = "".join(['samtools view -bS analysis/align/indiv_',str(indivID+1),'_aln.sam > analysis/align/indiv_',str(indivID+1),'.bam'])
     subprocess.check_output(cmd,shell=True)
+    cmd = "".join(['samtools sort analysis/align/indiv_',str(indivID+1),'.bam analysis/align/indiv_',str(indivID+1),'_sorted'])
+    subprocess.check_output(cmd,shell=True)
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='simulate population-based ddrad short read illumina sequence from consensus sequences')
     parser.add_argument('-i','--input',required=True, default=None,type=str,help='relative input FASTA file path')
-    parser.add_argument('-ms','--ms',required=True, default=None, type=str, help='local ms path')
+    parser.add_argument('-ms','--ms',required=False, default="~/src/bin/ms", type=str, help='local ms path')
     parser.add_argument('-n','--nindiv',required=False, default=4,type=int,help='number of individuals')
     parser.add_argument('-l','--len',required=False, default=300, type=int, help='simulated read length')
     #parser.add_argument('-p','--paired',required=False, default=False, type=bool, help='paired read options')
@@ -626,7 +630,8 @@ if __name__ == '__main__':
     parser.add_argument('-er', '--er', default=0.3, type=float, help='Prob that an indel is extended')    
 
     # Experimental and sequencing errors
-    parser.add_argument('-qp', '--qp', default=None, type=str, help='path for fq file to construct quality profile ')    
+    parser.add_argument('-qp', '--qp', default=None, type=str, help='path for fq file to construct quality profile ')
+    parser.add_argument('-lqp', '--lqp', default="/home/tng/src/BattleOfGenotype/data/300bp_quality_profile.npy", type=str, help='path for a npy-format file containing Phred quality info')    
     parser.add_argument('-se', '--se', default=0.01, type=float, help='fraction of sequencing errors that are indels')
 
     # Parameters for modulating different layers in read representations
@@ -646,7 +651,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-ln','--logNormal', action='store_true', help='locus effect will be based on higher level gamma model (default) ') 
     parser.add_argument('-lm','--lm', default=2, type=float, help='alpha parameter for gamma distrib that supports each locus-based dirichlet weight')
-    parser.add_argument('-lsd','--lsd', default=0.1, type=float, help='beta parameter for gamma distrib that supports each locu-based dirichlet weight ')
+    parser.add_argument('-lsd','--lsd', default=0.01, type=float, help='beta parameter for gamma distrib that supports each locu-based dirichlet weight ')
 
     opts = parser.parse_args()
     #/Users/work/academic/anderson/BattleOfGenotype/src/ms.folder/msdir/ms
@@ -654,7 +659,7 @@ if __name__ == '__main__':
         opts.logNormal = True 
     
     for i in ["data", "data/rnf", "data/seq", "data/veritas",
-              "analysis", "analysis/align", "analysis/geno"]:
+              "analysis", "analysis/align", "analysis/geno", "analysis/geno/freebayes", "analysis/geno/angsd"]:
         if not os.path.exists(i):
             os.makedirs(i)
     
@@ -695,7 +700,12 @@ if __name__ == '__main__':
         np.savetxt("data/veritas/quality_profile.csv", phredMatrix, delimiter=',')
         np.save("data/veritas/300bp_quality_profile.npy", phredMatrix)
     else:
-        phredMatrix = np.load("data/veritas/300bp_quality_profile.npy")
+        try:
+            phredMatrix = np.load(opts.lqp)
+        except FileNotFoundError:
+            print("Cannot find the numpy file you got there!!")
+            raise
+            
 
     pool = mp.Pool(processes = 4)
     results = [pool.apply_async(ConvFastaToFastQc, args=(i, phredMatrix, coverageMatrix, opts.se, opts.len)) for i in range(opts.nindiv)]
