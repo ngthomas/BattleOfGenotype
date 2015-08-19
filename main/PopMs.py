@@ -339,7 +339,7 @@ def DivideRef(seq, tstvRate, indelRate, extendRate):
 
         if indelI[i]==1:
             if isInsert[i] == 1:
-                minorSeq[i] = minorSeq[i] + "".join(np.random.choice(nuclDict['N'],lenExt[i]))
+                minorSeq[i] = majorSeq[i] + "".join(np.random.choice(nuclDict['N'],lenExt[i]))
             else:
                 minorSeq[i] = ''
 
@@ -606,7 +606,8 @@ def AlignIndiv(indivID):
     subprocess.check_output(cmd,shell=True)
     cmd = "".join(['samtools sort analysis/align/indiv_',str(indivID+1),'.bam analysis/align/indiv_',str(indivID+1),'_sorted'])
     subprocess.check_output(cmd,shell=True)
-
+    cmd = "".join(['samtools index analysis/align/indiv_',str(indivID+1),'_sorted.bam'])
+    subprocess.check_output(cmd,shell=True)
 
 
 if __name__ == '__main__':
@@ -626,13 +627,13 @@ if __name__ == '__main__':
     parser.add_argument('-r','--rho', default=0,type=float,help='recombination param - 4Nr')
     parser.add_argument('-t','--tstv', default=3,type=float,help='transition to transversion ratio (>0)')
     #parser.add_argument('-smr','--smr',required=False, default=0.0001,type=float,help='expected bp rate for somatic or gamete mutation') #ignoring this for now; since it is such an extreme infrequent case
-    parser.add_argument('-ir', '--ir', default=0.05, type=float, help='fraction of mutations that are indels')
+    parser.add_argument('-ir', '--ir', default=0.0, type=float, help='fraction of mutations that are indels')#0.05
     parser.add_argument('-er', '--er', default=0.3, type=float, help='Prob that an indel is extended')    
 
     # Experimental and sequencing errors
     parser.add_argument('-qp', '--qp', default=None, type=str, help='path for fq file to construct quality profile ')
     parser.add_argument('-lqp', '--lqp', default="/home/tng/src/BattleOfGenotype/data/300bp_quality_profile.npy", type=str, help='path for a npy-format file containing Phred quality info')    
-    parser.add_argument('-se', '--se', default=0.01, type=float, help='fraction of sequencing errors that are indels')
+    parser.add_argument('-se', '--se', default=0.0, type=float, help='fraction of sequencing errors that are indels') #0.01
 
     # Parameters for modulating different layers in read representations
 
@@ -641,8 +642,8 @@ if __name__ == '__main__':
     parser.add_argument('-vR','--varRead', default=15000, type=int, help='variance of number of total reads per individual')
 
        # haplotype effect
-    parser.add_argument('-ha','--ha', default=2, type=float, help='alpha parameter of the binomial-beta that instantiates haplotype bias')
-    parser.add_argument('-hb','--hb', default=2, type=float, help='beta parameter of the binomial-beta that instantiates haplotype bias')
+    parser.add_argument('-ha','--ha', default=50, type=float, help='alpha parameter of the binomial-beta that instantiates haplotype bias')
+    parser.add_argument('-hb','--hb', default=50, type=float, help='beta parameter of the binomial-beta that instantiates haplotype bias')
 
        # locus effect: either described with gamma prior to support multinomial-dirchlet or log-normal (log-normal: will be used as default)
     parser.add_argument('-gm','--gModel', action='store_true', help='locus effect will be based on higher level gamma model') 
@@ -650,8 +651,8 @@ if __name__ == '__main__':
     parser.add_argument('-gb','--gb', default=1.0/700, type=float, help='beta parameter for gamma distrib that supports each locu-based dirichlet weight ')
 
     parser.add_argument('-ln','--logNormal', action='store_true', help='locus effect will be based on higher level gamma model (default) ') 
-    parser.add_argument('-lm','--lm', default=2, type=float, help='alpha parameter for gamma distrib that supports each locus-based dirichlet weight')
-    parser.add_argument('-lsd','--lsd', default=0.01, type=float, help='beta parameter for gamma distrib that supports each locu-based dirichlet weight ')
+    parser.add_argument('-lm','--lm', default=4, type=float, help='alpha parameter for gamma distrib that supports each locus-based dirichlet weight')
+    parser.add_argument('-lsd','--lsd', default=0.001, type=float, help='beta parameter for gamma distrib that supports each locu-based dirichlet weight ')
 
     opts = parser.parse_args()
     #/Users/work/academic/anderson/BattleOfGenotype/src/ms.folder/msdir/ms
@@ -707,7 +708,7 @@ if __name__ == '__main__':
             raise
             
 
-    pool = mp.Pool(processes = 4)
+    pool = mp.Pool(processes = 5)
     results = [pool.apply_async(ConvFastaToFastQc, args=(i, phredMatrix, coverageMatrix, opts.se, opts.len)) for i in range(opts.nindiv)]
     for r in results:
         r.get()
