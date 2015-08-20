@@ -10,7 +10,7 @@ use strict;
     logger('in', $_);
   };
  
-  my $counter;
+  my $counter = 0;
   count();
   print "$counter\n";
   sub count {
@@ -20,7 +20,7 @@ use strict;
  
   sub logger {
     my ($level, $msg) = @_;
-    if (open my $out, '>>', 'log.txt') {
+    if (open my $out, '>', 'log.txt') {
         chomp $msg;
         print $out "$level - $msg\n";
     }
@@ -41,23 +41,26 @@ while(<>) {
 	for (my $i = 0; $i <= $#derivAllele ; $i++) {
 		my @temAllele = split "", $derivAllele[$i];
 		push @{$allAllele}, \@temAllele;
-		$samLen = 1 if $len != $#temAllele;
+		$sameLen = 1 if $len != $#temAllele;
                 $len = $#temAllele if $len < $#temAllele; 
 	}
 	
 	if ($len > 0) {
-		if ($samLen == 0) {
+		if ($sameLen == 0) {
 			# handling case just for pure haplotype subsitution (w/o any del or sub) 
 			for (my $i = 0; $i <= $len; $i++) {
 				my $isSNP = 0;
                                 my $refNucl = $allAllele->[0][$i];
 				my $devNucl="err";
+				my @haplo;
+				push @haplo, 0; # reference
 				for (my $j = 1; $j <= $#{$allAllele}; $j++) {
+					push @haplo, 1*($refNucl ne $allAllele->[$j][$i]);
 					($devNucl, $isSNP) = ($allAllele->[$j][$i], 1) if $refNucl ne $allAllele->[$j][$i];	
 				}
 				if ($isSNP == 1) {
 					print join "\t", $contig, $pos+$i, $refNucl, $devNucl; 
-					map{print "\t", $allAllele->[$1][$i], $allAllele->[$2][$i]  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
+					map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
                 			print "\n";
 				}
 			}
@@ -66,44 +69,60 @@ while(<>) {
 			if ($l[7]=~/del/) {
 				#deletion case: minus 1 bp
 				my $lenAlt = $#derivAllele + 1;
-                                my @nucl = ($allAllele->[0][1], (".")x$lenAlt) ;
+                                my @haplo;
+				push @haplo, 0; 
 				for(my $j = 1; $j <= $#{$allAllele}; $j++) {
-					$nucl[$j] = $allAllele->[0][1] if $#{$allAllele->[$j]} == $#{$allAllele->[0]};
+					push @haplo, 1*($#{$allAllele->[$j]} != $#{$allAllele->[0]});
 				}
-				print join "\t", $contig, $pos+1, $nucl[0], "."; 
-				map{print "\t", $nucl[$1], $nucl[$2]  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
+				print join "\t", $contig, $pos+1, $allAllele->[0][1], "."; 
+				map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
                 		print "\n";
 
 				for (my $i = 2; $i <= $len; $i++) {
 					my $isSNP = 0;
                                 	my $refNucl = $allAllele->[0][$i];
 					my $devNucl;
-					my @nucl;
-					push @nucl, $refNucl;
+					my @haplo;
+					push @haplo, 0;
 					for (my $j = 1; $j <= $#{$allAllele}; $j++) {
-						my $adj = $i - ($#{$allAllele[0]} - $#{$allAllele[$j]});
-						push @nucl, $allAllele->[$j][$adj]
+						my $adj = $i - ($#{$allAllele->[0]} - $#{$allAllele->[$j]});
+						#push @nucl, $allAllele->[$j][$adj]
+						push @haplo, 1*($refNucl ne $allAllele->[$j][$adj]);
 						($devNucl, $isSNP) = ($allAllele->[$j][$adj], 1) if $refNucl ne $allAllele->[$j][$adj];	
 					}
 					if ($isSNP == 1) {
 						print join "\t", $contig, $pos+$i, $refNucl, $devNucl; 
-						map{print "\t", $nucl[$1], $nucl[$2]  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
+						map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
                 				print "\n";
 					}
 				}
 			}
 			elsif($l[7]=~/ins/){
-				print $_, "\n";
+				#ins
+                                my @haplo;
+                                push @haplo, 0;
+				my $alter;
+                                for(my $j = 1; $j <= $#{$allAllele}; $j++) {
+                                        push @haplo, 1*($#{$allAllele->[$j]} != $#{$allAllele->[0]});
+					if ($#{$allAllele->[$j]} != $#{$allAllele->[0]}) {
+						$alter = join "", splice(@{$allAllele->[$j]}, 0, 1+$#{$allAllele->[$j]} - $#{$allAllele->[0]});
+					}
+                                }
+                                print join "\t", $contig, $pos, $allAllele->[0][0], $alter;
+                                map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
+                                print "\n";
+
+				#print $_, "\n";
 			}
 			else{
-				print $_,"\n";
+				logger('Cannot process this', $_);
 			}
 		}
 
 	}
 	else{
 		print join "\t", $contig, $pos, @{$allAllele->[0]}, @{$allAllele->[1]}; 
-		map{print "\t", @{$allAllele->[$1]}, @{$allAllele->[$2]}  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
+		map{print "\t", $1+$2  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
                 print "\n";
 	}
 }
