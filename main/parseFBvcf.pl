@@ -12,7 +12,7 @@ use strict;
  
   my $counter = 0;
   count();
-  print "$counter\n";
+  #print "$counter\n";
   sub count {
     $counter = $counter + 42;
   }
@@ -20,7 +20,7 @@ use strict;
  
   sub logger {
     my ($level, $msg) = @_;
-    if (open my $out, '>', 'log.txt') {
+    if (open my $out, '>>', 'log.txt') {
         chomp $msg;
         print $out "$level - $msg\n";
     }
@@ -34,7 +34,7 @@ while(<>) {
         my $pos = $l[1];
 	my $contig = $1 if $l[0]=~/contig_(\d*)/;
 
-        my $allAllele;
+        my $allAllele; # referenc for multiallelic haplotypes
 	push @{$allAllele}, \@ancAllele;
         my $len = $#ancAllele ;
 	my $sameLen = 0;
@@ -44,6 +44,7 @@ while(<>) {
 		$sameLen = 1 if $len != $#temAllele;
                 $len = $#temAllele if $len < $#temAllele; 
 	}
+	#map {print join "\t", "ERROR - ",$l[$_], "\n", @l if $l[$_] !~/^(\d*)\/(\d*)/} (9..$#l);
 	
 	if ($len > 0) {
 		if ($sameLen == 0) {
@@ -52,7 +53,7 @@ while(<>) {
 				my $isSNP = 0;
                                 my $refNucl = $allAllele->[0][$i];
 				my $devNucl="err";
-				my @haplo;
+				my @haplo; # hold 0 or 1 
 				push @haplo, 0; # reference
 				for (my $j = 1; $j <= $#{$allAllele}; $j++) {
 					push @haplo, 1*($refNucl ne $allAllele->[$j][$i]);
@@ -60,7 +61,12 @@ while(<>) {
 				}
 				if ($isSNP == 1) {
 					print join "\t", $contig, $pos+$i, $refNucl, $devNucl; 
-					map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
+					# in freebayes, some genotype (".") are not given at all, so we will print this as "-1" instead 
+					for (9..$#l) {
+						print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^(\d*)\/(\d*)/;
+						print "\t-1" if $l[$_] !~/^(\d*)\/(\d*)/;
+					}
+					#map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^(\d*)\/(\d*)/}(9..$#l);
                 			print "\n";
 				}
 			}
@@ -75,7 +81,11 @@ while(<>) {
 					push @haplo, 1*($#{$allAllele->[$j]} != $#{$allAllele->[0]});
 				}
 				print join "\t", $contig, $pos+1, $allAllele->[0][1], "."; 
-				map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
+				for (9..$#l) {
+                                        print "\t",  $haplo[$1]+$haplo[$2]  if $l[$_] =~/^(\d*)\/(\d*)/;
+                                        print "\t-1" if $l[$_] !~/^(\d*)\/(\d*)/;
+                                }
+				#map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^(\d*)\/(\d*)/}(9..$#l);
                 		print "\n";
 
 				for (my $i = 2; $i <= $len; $i++) {
@@ -92,7 +102,11 @@ while(<>) {
 					}
 					if ($isSNP == 1) {
 						print join "\t", $contig, $pos+$i, $refNucl, $devNucl; 
-						map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
+						for (9..$#l) {
+                                        		print "\t",  $haplo[$1]+$haplo[$2]  if $l[$_] =~/^(\d*)\/(\d*)/;
+                                         		print "\t-1" if $l[$_] !~/^(\d*)\/(\d*)/;
+                                		}
+						#map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^(\d*)\/(\d*)/}(9..$#l);
                 				print "\n";
 					}
 				}
@@ -109,7 +123,11 @@ while(<>) {
 					}
                                 }
                                 print join "\t", $contig, $pos, $allAllele->[0][0], $alter;
-                                map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
+				for (9..$#l) {
+                        		print "\t",  $haplo[$1]+$haplo[$2]  if $l[$_] =~/^(\d*)\/(\d*)/;
+                       			 print "\t-1" if $l[$_] !~/^(\d*)\/(\d*)/;
+                		}
+                                #map{print "\t", $haplo[$1]+$haplo[$2]  if $l[$_] =~/^(\d*)\/(\d*)/}(9..$#l);
                                 print "\n";
 
 				#print $_, "\n";
@@ -122,7 +140,11 @@ while(<>) {
 	}
 	else{
 		print join "\t", $contig, $pos, @{$allAllele->[0]}, @{$allAllele->[1]}; 
-		map{print "\t", $1+$2  if $l[$_] =~/^([01])\/([01])/}(9..$#l);
+		for (9..$#l) {
+			print "\t", $1+$2  if $l[$_] =~/^(\d*)\/(\d*)/;
+                        print "\t-1" if $l[$_] !~/^(\d*)\/(\d*)/;
+                }
+		#map{print "\t", $1+$2  if $l[$_] =~/^(\d*)\/(\d*)/}(9..$#l);
                 print "\n";
 	}
 }
