@@ -104,7 +104,7 @@ MatchToRef <- function(d){
   return(c(matchCt,flipCt))
 }
 
-
+reload(inst("plyr"))
 numMatchTbl <- ddply(allGeno, .(case, trial, contig, pos), function(i)MatchToRef(i))
 
 numMatchDf <-tbl_df(numMatchTbl)
@@ -139,7 +139,7 @@ tem <- rbind(tem,
 tem <- rbind(tem,
              predRateCompl %>% group_by(case, trial) %>% summarise(method="ANGSD GATK",
                                                              metrics="Recall (%)",
-                                                             val=nSnpangS*100/nPos))
+                                                             val=nSnpangG*100/nPos))
 
 
 tem <- rbind(tem,
@@ -174,7 +174,8 @@ finalRate <- rbind(tem,
 
 
 finalRate$metrics = factor(finalRate$metrics, levels=c('Recall (%)','Precision (%)',"Genotype Accuracy (%)"))
-
+rate.stat <- finalRate %>% group_by(case, method, metrics) %>% summarise(mean=round(mean(val),2),
+                                                                         sd=round(sd(val),2))
 
 ggplot(finalRate, aes(y=method, x=val))+
   xlab("")+
@@ -188,8 +189,6 @@ ggplot(finalRate, aes(y=method, x=val))+
         axis.text.y = element_text(),
         legend.key = element_blank())
 
-rate.stat <- finalRate %>% group_by(case, method, metrics) %>% summarise(mean=round(mean(val),2),
-                                                                           sd=round(sd(val),2))
   
 ggplot(rate.stat, 
        aes(y = method, x = 50, label = format(paste0("", mean,"%  \t\t (sd: ", sd, ")" ), nsmall = 1)))+
