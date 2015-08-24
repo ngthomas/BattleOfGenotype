@@ -58,14 +58,21 @@ p1 <- p1+
   return(p1)
 }
 
-
-
-
-
-
 grid.newpage()
-#grid.arrange(p1,p2,p3, ncol=3, nrow=1)
-g<-arrangeGrob(p1, p2, p3, nrow=3)
+
+p1 <- lapply(1:30, function(i) {j=i%%3; k=ceiling(i/3); if((k==9 && j==1)) {plotCov(k,j, TRUE)} else{plotCov(k,j)} })
+#gridp <- arrangeGrob(p1, ncol=3, nrow=10)
+
+#grid.arrange(plotCov(1,2), ncol=3, nrow=10)
+#g<-arrangeGrob(p1, nrow=3)
+pdf("distrib.pdf",width = 34, height = 22,paper="USr")# height = 1051, width = 818)# paper = "USr")
+do.call(grid.arrange, c(p1, ncol=3))
+dev.off()
+
+#pushViewport(viewport(layout = grid.layout(2, 2)))
+#print(plot5, vp = vplayout(1, 1:2))
+#print(plot6, vp = vplayout(2, 1))
+
 
 #read reference
 refGeno <-tbl_df(read.table("ref_geno.tbl", fill=TRUE))
@@ -73,11 +80,12 @@ allGeno <-tbl_df(read.table("all_geno.tbl", fill=TRUE, as.is = TRUE))
 colnames(allGeno) <- c("origin", "case", "trial", "contig", "pos", "anc", "der", paste("indiv", 1:48, sep=""))
 
 MatchToRef <- function(d){
-  matchCt <- c(0,0,0)
+  matchCt <- c(0,0,0,0)
   flipCt <- c(0,0,0)
   if("ref" %in% d$origin) {
     refIndx = which("ref"==d$origin)
     i = 0;
+    matchCt[4] = 1
     for (m in c("freeBayes", "angsdSam", "angsdGatk")) {
       i = i+1;
       if(m %in% d$origin) {
@@ -104,14 +112,14 @@ MatchToRef <- function(d){
   return(c(matchCt,flipCt))
 }
 
-reload(inst("plyr"))
+#reload(inst("plyr"))
 numMatchTbl <- ddply(allGeno, .(case, trial, contig, pos), function(i)MatchToRef(i))
 
 numMatchDf <-tbl_df(numMatchTbl)
-colnames(numMatchDf) <- c("case", "trial", "contig", "pos", "fb", "angS", "angG", "fbF", "angSF", "angGF")
+colnames(numMatchDf) <- c("case", "trial", "contig", "pos", "fb", "angS", "angG", "ref", "fbF", "angSF", "angGF")
 
-reload(inst("dplyr"))
-predRateComponent <- numMatchDf %>% group_by(case, trial) %>% summarise(nPos = length(fb),
+#reload(inst("dplyr"))
+predRateComponent <- numMatchDf %>% group_by(case, trial) %>% summarise(nPos = sum(ref),
                                                    nSnpfb = sum(fb>0),
                                                    nSnpangS = sum(angS>0),
                                                    nSnpangG = sum(angG>0),
@@ -177,6 +185,8 @@ finalRate$metrics = factor(finalRate$metrics, levels=c('Recall (%)','Precision (
 rate.stat <- finalRate %>% group_by(case, method, metrics) %>% summarise(mean=round(mean(val),2),
                                                                          sd=round(sd(val),2))
 
+save(finalRate,file="finalRate.Rda")
+#reload(inst("ggplot2"))
 ggplot(finalRate, aes(y=method, x=val))+
   xlab("")+
   geom_point(alpha=0.9, color="grey")+
@@ -190,42 +200,9 @@ ggplot(finalRate, aes(y=method, x=val))+
         legend.key = element_blank())
 
   
-ggplot(rate.stat, 
-       aes(y = method, x = 50, label = format(paste0("", mean,"%  \t\t (sd: ", sd, ")" ), nsmall = 1)))+
-                       geom_text(size = 5)+
-  facet_grid(case~metrics, scales="free_x")+theme_bw()+
-  theme(panel.grid.major = element_blank(), 
-      legend.position = "none",
-       panel.border = element_blank(), 
-      axis.text.x = element_blank(),
-       axis.ticks = element_blank()) +
-  theme(plot.margin = unit(c(0.5,1, 0, 0.5), "lines")) + xlab(NULL) + ylab(NULL)
-  
-  +scale_y_discrete(formatter = abbreviate,
-                                                    limits=c("FreeBayes",
-                                                             "ANGSD SAMtools",
-                                                             "ANGSD GATK"))+
-  facet_grid(case~metrics, scales="free_x")
 
-    geom_text(size = 3.5) + theme_bw()
+#  theme(plot.margin = unit(c(0.5,1, 0, 0.5), "lines")) + xlab(NULL) + ylab(NULL)
     
-    ggplot(dfm, aes(x = month, y = factor(City),
-                    label = format(value, nsmall = 1), colour = City)) +
-      geom_text(size = 3.5) + theme_bw() + scale_y_discrete(formatter = abbreviate,
-                                                            limits = c("Minneapolis", "Raleigh", "Phoenix")) +
-      opts(panel.grid.major = none, legend.position = "none",
-           panel.border = none, axis.text.x = none,
-           axis.ticks = none) + opts(plot.margin = unit(c(-0.5,
-                                                          1, 0, 0.5), "lines")) + xlab(NULL) + ylab(NULL)
-    
-    
-  
-
-  summarise(matchToFB=MatchToRef(origin, anc, der, "freeBayes"),
-            matchToAngS=MatchToRef(origin, anc, der, "angsdSam"),
-            matchToGAT=MatchToRef(origin, anc, der, "angsdGatk"))
-
-
 
 
 
