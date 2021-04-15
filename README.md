@@ -10,7 +10,7 @@ Currently, this is being tested against SAMtools, ANGSD, GATK and FreeBayes. I n
 
 <br>
 <img src="fig/pipeline1.jpeg" title="pipe1" width="60%" />
-<img src="fig/pipeline1.jpeg" title="pipe2" width="60%" />
+<img src="fig/pipeline2.jpeg" title="pipe2" width="60%" />
 <br>
 
 ### Not another short read simulator
