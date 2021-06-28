@@ -1,6 +1,6 @@
-##BattleOfGenotype
+## BattleOfGenotype
 
-###Goal
+### Goal
 
 This project is to assess single-site versus multi-allelic variant detection models for site-directed next-gen read sequences.
 Another word, can we accurately infer genotype variants from next-generation read sequences?
